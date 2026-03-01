@@ -1,0 +1,126 @@
+1. Buat Project
+composer create-project laravel/laravel simple-crud-template
+cd simple-crud-template
+
+2. Setting Database
+
+3. php artisan make:model Item -mcr
+
+4. Edit Migration
+$table->id();
+$table->string('name');
+$table->string('email')->nullable();
+$table->string('role')->nullable();
+$table->timestamps();
+
+php artisan migrate
+
+5. app/Models/Item.php
+
+Tambahkan:
+
+protected $fillable = [
+    'name',
+    'email',
+    'role'
+];
+
+6. app/Http/Controllers/ItemController.php
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Item;
+use Illuminate\Http\Request;
+
+class ItemController extends Controller
+{
+    public function index()
+    {
+        $items = Item::all();
+        return view('crud', compact('items'));
+    }
+
+    public function store(Request $request)
+    {
+        Item::create($request->all());
+        return redirect('/');
+    }
+
+    public function update(Request $request, $id)
+    {
+        $item = Item::findOrFail($id);
+        $item->update($request->all());
+        return redirect('/');
+    }
+
+    public function destroy($id)
+    {
+        Item::destroy($id);
+        return redirect('/');
+    }
+}
+
+7. routes/web.php
+use App\Http\Controllers\ItemController;
+
+Route::get('/', [ItemController::class, 'index']);
+Route::post('/store', [ItemController::class, 'store']);
+Route::post('/update/{id}', [ItemController::class, 'update']);
+Route::get('/delete/{id}', [ItemController::class, 'destroy']);
+
+8. resources/views/crud.blade.php
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple CRUD</title>
+</head>
+<body>
+
+<h2>Tambah Data</h2>
+
+<form action="/store" method="POST">
+    @csrf
+    <input type="text" name="name" placeholder="Nama" required>
+    <input type="text" name="email" placeholder="Email">
+    <input type="text" name="role" placeholder="Role">
+    <button type="submit">Simpan</button>
+</form>
+
+<hr>
+
+<h2>Data</h2>
+
+<table border="1" cellpadding="10">
+<tr>
+    <th>Nama</th>
+    <th>Email</th>
+    <th>Role</th>
+    <th>Aksi</th>
+</tr>
+
+@foreach($items as $item)
+<tr>
+    <form action="/update/{{ $item->id }}" method="POST">
+        @csrf
+        <td>
+            <input type="text" name="name" value="{{ $item->name }}">
+        </td>
+        <td>
+            <input type="text" name="email" value="{{ $item->email }}">
+        </td>
+        <td>
+            <input type="text" name="role" value="{{ $item->role }}">
+        </td>
+        <td>
+            <button type="submit">Update</button>
+            <a href="/delete/{{ $item->id }}" onclick="return confirm('Yakin?')">Delete</a>
+        </td>
+    </form>
+</tr>
+@endforeach
+
+</table>
+
+</body>
+</html>
