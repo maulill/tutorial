@@ -1,0 +1,950 @@
+BREEZE MULTIROLE
+1.composer create-project laravel/laravel project
+2.cd project
+3.composer require laravel/breeze --dev
+4.php artisan breeze:install blade
+5. npm install
+5. ubah env
+6. tambah kolom role:
+$table->enum('role', ['admin','guru','siswa'])->default('siswa');
+7. migrate
+8. tambahkan:
+'role' -> user.php
+'role' => 'siswa', -> regiscontroller
+9. php artisan make:middleware RoleMiddleware
+isi:
+public function handle($request, Closure $next, ...$roles)
+{
+    if (!auth()->check()) {
+        return redirect('/login');
+    }
+
+    if (!in_array(auth()->user()->role, $roles)) {
+        auth()->logout();
+        return redirect('/login')
+            ->with('error','Anda tidak memiliki akses');
+    }
+
+    return $next($request);
+}
+10.bootstrap/app.php
+tambah:
+->withMiddleware(function ($middleware) {
+    $middleware->alias([
+        'role' => \App\Http\Middleware\RoleMiddleware::class,
+    ]);
+})
+11. AuthenticatedSessionController@store dan RegisteredUserController@store
+isi:
+$user = auth()->user();
+
+if ($user->role === 'admin') return redirect('/admin');
+if ($user->role === 'guru') return redirect('/guru');
+if ($user->role === 'siswa') return redirect('/siswa');
+
+Auth::logout();
+return redirect('/login')->with('error','Role tidak dikenali');
+12. web.php
+ubah:
+Route::get('/dashboard', function () {
+    $user = auth()->user();
+
+    return redirect('/' . $user->role);
+})->middleware(['auth'])->name('dashboard');
+
+tambah:
+Route::middleware(['auth','role:admin'])->group(function () {
+    Route::get('/admin', fn () => view('admin.dashboard'));
+});
+
+Route::middleware(['auth','role:guru'])->group(function () {
+    Route::get('/guru', fn () => view('guru.dashboard'));
+});
+
+Route::middleware(['auth','role:siswa'])->group(function () {
+    Route::get('/siswa', [SiswaController::class,'index']);
+});
+13. buat struktur view views/admin/dashboard.blade.php dan views/guru/dashboard.blade.php
+14. run
+
+DASHBOARD ADMIN
+1.admin/dashboard.blade.php
+isi:
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            Dashboard Admin
+        </h2>
+    </x-slot>
+
+    <div class="py-8">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                {{-- CARD KELOLA USER --}}
+                <a href="/admin/users"
+                   class="bg-white shadow rounded-lg p-6 hover:bg-blue-50 transition">
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">
+                        Kelola User
+                    </h3>
+                    <p class="text-gray-600">
+                        Tambah, ubah, dan hapus data user
+                    </p>
+                </a>
+
+                {{-- CARD KELOLA MAPEL --}}
+                <a href="/admin/mapel"
+                   class="bg-white shadow rounded-lg p-6 hover:bg-green-50 transition">
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">
+                        Kelola Mapel
+                    </h3>
+                    <p class="text-gray-600">
+                        Manajemen data mata pelajaran
+                    </p>
+                </a>
+
+                {{-- CARD KELOLA PENGAMPU --}}
+                <a href="/admin/pengampu"
+                   class="bg-white shadow rounded-lg p-6 hover:bg-purple-50 transition">
+                    <h3 class="text-lg font-bold text-gray-800 mb-2">
+                        Kelola Pengampu
+                    </h3>
+                    <p class="text-gray-600">
+                        Atur guru pengampu mapel
+                    </p>
+                </a>
+
+            </div>
+
+        </div>
+    </div>
+</x-app-layout>
+2.route/web.php di role admin
+tambah:
+use App\Http\Controllers\AdminUserController;
+
+
+Route::get('/admin/users', fn () => view('admin.users'));
+Route::get('/admin/mapel', fn () => view('admin.mapel'));
+Route::get('/admin/pengampu', fn () => view('admin.pengampu'));
+Route::get('/admin/users', [AdminUserController::class, 'index']);
+Route::post('/admin/users', [AdminUserController::class, 'store']);
+Route::post('/admin/users/{id}', [AdminUserController::class, 'update']);
+Route::get('/admin/users/delete/{id}', [AdminUserController::class, 'destroy']);
+3. php artisan make:controller AdminUserController
+isi:
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+
+class AdminUserController extends Controller
+{
+    // 1️⃣ TAMPILKAN USER
+    public function index()
+    {
+        $users = User::all();
+        return view('admin.users', compact('users'));
+    }
+
+    // 2️⃣ TAMBAH USER
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name' => 'required',
+            'email' => 'required|email|unique:users',
+            'password' => 'required|min:6',
+            'role' => 'required',
+        ]);
+
+        User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'role' => $request->role,
+        ]);
+
+        return back()->with('success', 'User berhasil ditambahkan');
+    }
+
+    // 3️⃣ UPDATE USER
+    public function update(Request $request, $id)
+    {
+        User::where('id', $id)->update([
+            'name' => $request->name,
+            'email' => $request->email,
+            'role' => $request->role,
+        ]);
+
+        return back()->with('success', 'User berhasil diupdate');
+    }
+
+    // 4️⃣ HAPUS USER
+    public function destroy($id)
+    {
+        User::where('id', $id)->delete();
+        return back()->with('success', 'User berhasil dihapus');
+    }
+}
+4. users.blade.php
+isi:
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            Kelola User
+        </h2>
+    </x-slot>
+
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+            {{-- ALERT --}}
+            @if(session('success'))
+                <div class="mb-4 text-green-600">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            {{-- FORM TAMBAH USER --}}
+            <div class="bg-white p-4 rounded shadow mb-6">
+                <h3 class="font-bold mb-3">Tambah User</h3>
+
+                <form method="POST" action="/admin/users">
+                    @csrf
+
+                    <input type="text" name="name" placeholder="Nama"
+                        class="border px-2 py-1 w-full mb-2" required>
+
+                    <input type="email" name="email" placeholder="Email"
+                        class="border px-2 py-1 w-full mb-2" required>
+
+                    <input type="password" name="password" placeholder="Password"
+                        class="border px-2 py-1 w-full mb-2" required>
+
+                    <select name="role" class="border px-2 py-1 w-full mb-3">
+                        <option value="admin">Admin</option>
+                        <option value="guru">Guru</option>
+                        <option value="siswa">Siswa</option>
+                    </select>
+
+                    <button class="bg-blue-600 text-white px-4 py-1 rounded">
+                        Tambah
+                    </button>
+                </form>
+            </div>
+
+            {{-- TABEL USER --}}
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="font-bold mb-3">Daftar User</h3>
+
+                <table class="w-full border">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-2 py-1">Nama</th>
+                            <th class="border px-2 py-1">Email</th>
+                            <th class="border px-2 py-1">Role</th>
+                            <th class="border px-2 py-1">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($users as $u)
+                        <tr>
+                            <form method="POST" action="/admin/users/{{ $u->id }}">
+                                @csrf
+                                <td class="border px-2 py-1">
+                                    <input name="name" value="{{ $u->name }}" class="border px-1 w-full">
+                                </td>
+                                <td class="border px-2 py-1">
+                                    <input name="email" value="{{ $u->email }}" class="border px-1 w-full">
+                                </td>
+                                <td class="border px-2 py-1">
+                                    <select name="role" class="border px-1 w-full">
+                                        <option {{ $u->role=='admin'?'selected':'' }}>admin</option>
+                                        <option {{ $u->role=='guru'?'selected':'' }}>guru</option>
+                                        <option {{ $u->role=='siswa'?'selected':'' }}>siswa</option>
+                                    </select>
+                                </td>
+                                <td class="border px-2 py-1">
+                                    <button class="bg-green-500 px-2 py-1 rounded text-white">
+                                        Update
+                                    </button>
+                                    <a href="/admin/users/delete/{{ $u->id }}"
+                                       class="bg-red-500 px-2 py-1 rounded text-white"
+                                       onclick="return confirm('Hapus user?')">
+                                        Hapus
+                                    </a>
+                                </td>
+                            </form>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+</x-app-layout>
+5.php artisan make:model Mapel -m
+isi:
+Schema::create('mapels', function (Blueprint $table) {
+    $table->id();
+    $table->string('nama');
+    $table->integer('durasi'); // menit / jam
+    $table->timestamps();
+});
+6.migrate
+7. app/Models/Mapel.php
+isi:
+protected $fillable = ['nama','durasi'];
+8.php artisan make:controller AdminMapelController
+isi:
+use App\Models\Mapel;
+use Illuminate\Http\Request;
+
+class AdminMapelController extends Controller
+{
+    public function index()
+    {
+        $mapels = Mapel::all();
+        return view('admin.mapel', compact('mapels'));
+    }
+
+    public function store(Request $r)
+    {
+        Mapel::create([
+            'nama' => $r->nama,
+            'durasi' => $r->durasi,
+        ]);
+        return back();
+    }
+
+    public function update(Request $r, $id)
+    {
+        Mapel::where('id',$id)->update([
+            'nama' => $r->nama,
+            'durasi' => $r->durasi,
+        ]);
+        return back();
+    }
+
+    public function destroy($id)
+    {
+        Mapel::where('id',$id)->delete();
+        return back();
+    }
+}
+9. mapel.blade.php
+isi:
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            Kelola Mapel
+        </h2>
+    </x-slot>
+
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+            {{-- ALERT --}}
+            @if(session('success'))
+                <div class="mb-4 text-green-600">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            {{-- FORM TAMBAH MAPEL --}}
+            <div class="bg-white p-4 rounded shadow mb-6">
+                <h3 class="font-bold mb-3">Tambah Mapel</h3>
+
+                <form method="POST" action="/admin/mapel">
+                    @csrf
+
+                    <input
+                        name="nama"
+                        placeholder="Nama Mapel"
+                        class="border px-2 py-1 mr-2"
+                        required
+                    >
+
+                    <input
+                        name="durasi"
+                        placeholder="Durasi (menit)"
+                        type="number"
+                        class="border px-2 py-1 mr-2"
+                        required
+                    >
+
+                    <button class="bg-blue-600 text-white px-4 py-1 rounded">
+                        Tambah
+                    </button>
+                </form>
+            </div>
+
+            {{-- TABEL MAPEL --}}
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="font-bold mb-3">Daftar Mapel</h3>
+
+                <table class="w-full border">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-2 py-1">Nama</th>
+                            <th class="border px-2 py-1">Durasi</th>
+                            <th class="border px-2 py-1">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($mapels as $m)
+                        <tr>
+                            <form method="POST" action="/admin/mapel/{{ $m->id }}">
+                                @csrf
+
+                                <td class="border px-2 py-1">
+                                    <input
+                                        name="nama"
+                                        value="{{ $m->nama }}"
+                                        class="border px-1 w-full"
+                                    >
+                                </td>
+
+                                <td class="border px-2 py-1">
+                                    <input
+                                        name="durasi"
+                                        type="number"
+                                        value="{{ $m->durasi }}"
+                                        class="border px-1 w-full"
+                                    >
+                                </td>
+
+                                <td class="border px-2 py-1">
+                                    <button class="bg-green-500 px-2 py-1 rounded text-black">
+                                        Update
+                                    </button>
+
+                                    <a href="/admin/mapel/delete/{{ $m->id }}"
+                                       class="bg-red-500 px-2 py-1 rounded text-black"
+                                       onclick="return confirm('Hapus mapel?')">
+                                        Hapus
+                                    </a>
+                                </td>
+                            </form>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+</x-app-layout>
+10. routing
+use App\Http\Controllers\AdminMapelController;
+
+tambah di role admin:
+	Route::get('/admin/mapel', [AdminMapelController::class,'index']);
+    Route::post('/admin/mapel', [AdminMapelController::class,'store']);
+    Route::post('/admin/mapel/{id}', [AdminMapelController::class,'update']);
+    Route::get('/admin/mapel/delete/{id}', [AdminMapelController::class,'destroy']);
+11. php artisan make:model Pengampu -m
+isi:
+Schema::create('pengampus', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('mapel_id')->constrained('mapels')->cascadeOnDelete();
+    $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+    $table->timestamps();
+});
+12. migrate
+13. app/Models/Pengampu.php
+isi:
+protected $fillable = ['mapel_id','user_id'];
+
+public function mapel() {
+    return $this->belongsTo(Mapel::class);
+}
+
+public function guru() {
+    return $this->belongsTo(User::class,'user_id');
+}
+14.php artisan make:controller AdminPengampuController
+isi:
+use App\Models\Pengampu;
+use App\Models\Mapel;
+use App\Models\User;
+use Illuminate\Http\Request;
+
+class AdminPengampuController extends Controller
+{
+    public function index()
+    {
+        $pengampus = Pengampu::with(['mapel','guru'])->get();
+        $mapels = Mapel::all();
+        $gurus = User::where('role','guru')->get();
+
+        return view('admin.pengampu', compact('pengampus','mapels','gurus'));
+    }
+
+    public function store(Request $r)
+    {
+        Pengampu::create([
+            'mapel_id' => $r->mapel_id,
+            'user_id' => $r->user_id,
+        ]);
+        return back();
+    }
+
+    public function destroy($id)
+    {
+        Pengampu::where('id',$id)->delete();
+        return back();
+    }
+}
+15. pengampu.blade.php
+isi:
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            Kelola Pengampu
+        </h2>
+    </x-slot>
+
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+            {{-- ALERT --}}
+            @if(session('success'))
+                <div class="mb-4 text-green-600">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            {{-- FORM TAMBAH PENGAMPU --}}
+            <div class="bg-white p-4 rounded shadow mb-6">
+                <h3 class="font-bold mb-3">Tambah Pengampu</h3>
+
+                <form method="POST" action="/admin/pengampu">
+                    @csrf
+
+                    {{-- MAPEL --}}
+                    <select name="mapel_id" class="border px-2 py-1 mr-2" required>
+                        <option value="">-- Pilih Mapel --</option>
+                        @foreach($mapels as $m)
+                            <option value="{{ $m->id }}">{{ $m->nama }}</option>
+                        @endforeach
+                    </select>
+
+                    {{-- GURU --}}
+                    <select name="user_id" class="border px-2 py-1 mr-2" required>
+                        <option value="">-- Pilih Guru --</option>
+                        @foreach($gurus as $g)
+                            <option value="{{ $g->id }}">{{ $g->name }}</option>
+                        @endforeach
+                    </select>
+
+                    <button class="bg-blue-600 text-white px-4 py-1 rounded">
+                        Tambah
+                    </button>
+                </form>
+            </div>
+
+            {{-- TABEL PENGAMPU --}}
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="font-bold mb-3">Daftar Pengampu</h3>
+
+                <table class="w-full border">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-2 py-1">Mapel</th>
+                            <th class="border px-2 py-1">Guru</th>
+                            <th class="border px-2 py-1">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($pengampus as $p)
+                        <tr>
+                            <form method="POST" action="/admin/pengampu/{{ $p->id }}">
+                                @csrf
+
+                                {{-- MAPEL --}}
+                                <td class="border px-2 py-1">
+                                    <select name="mapel_id" class="border px-1 w-full">
+                                        @foreach($mapels as $m)
+                                            <option value="{{ $m->id }}"
+                                                {{ $p->mapel_id == $m->id ? 'selected' : '' }}>
+                                                {{ $m->nama }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </td>
+
+                                {{-- GURU --}}
+                                <td class="border px-2 py-1">
+                                    <select name="user_id" class="border px-1 w-full">
+                                        @foreach($gurus as $g)
+                                            <option value="{{ $g->id }}"
+                                                {{ $p->user_id == $g->id ? 'selected' : '' }}>
+                                                {{ $g->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </td>
+
+                                {{-- AKSI --}}
+                                <td class="border px-2 py-1">
+                                    <button class="bg-green-500 px-2 py-1 rounded text-black">
+                                        Update
+                                    </button>
+
+                                    <a href="/admin/pengampu/delete/{{ $p->id }}"
+                                       class="bg-red-500 px-2 py-1 rounded text-black"
+                                       onclick="return confirm('Hapus pengampu?')">
+                                        Hapus
+                                    </a>
+                                </td>
+                            </form>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+    </div>
+</x-app-layout>
+16. routing
+use App\Http\Controllers\AdminPengampuController;
+
+tambah di role admin:
+    Route::get('/admin/pengampu', [AdminPengampuController::class,'index']);
+    Route::post('/admin/pengampu', [AdminPengampuController::class,'store']);
+    Route::get('/admin/pengampu/delete/{id}', [AdminPengampuController::class,'destroy']);
+	
+DASHBOARD GURU
+1.php artisan make:model Nilai -m
+isi:
+Schema::create('nilais', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('pengampu_id')->constrained()->cascadeOnDelete();
+    $table->foreignId('user_id')->constrained()->cascadeOnDelete(); // siswa
+    $table->integer('nilai');
+    $table->timestamps();
+2. nilai.php
+isi:
+class Nilai extends Model
+{
+    protected $fillable = ['pengampu_id','user_id','nilai'];
+
+    public function siswa()
+    {
+        return $this->belongsTo(User::class,'user_id');
+    }
+
+    public function pengampu()
+    {
+        return $this->belongsTo(Pengampu::class);
+    }
+}
+3.pengampu.php
+isi:
+class Pengampu extends Model
+{
+    protected $fillable = ['mapel_id','user_id'];
+
+    public function mapel()
+    {
+        return $this->belongsTo(Mapel::class);
+    }
+
+    public function guru()
+    {
+        return $this->belongsTo(User::class,'user_id');
+    }
+
+    public function nilais()
+    {
+        return $this->hasMany(Nilai::class);
+    }
+}
+4.user.php
+isi:
+public function nilais()
+{
+    return $this->hasMany(Nilai::class);
+}
+5.php artisan make:controller GuruNilaiController
+isi:
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\Pengampu;
+use App\Models\User;
+use App\Models\Nilai;
+
+
+class GuruNilaiController extends Controller
+{
+    public function index()
+{
+    $pengampus = Pengampu::with(['mapel','nilais'])
+        ->where('user_id', auth()->id())
+        ->get();
+
+    $siswas = User::where('role', 'siswa')->get();
+
+    return view('guru.dashboard', compact('pengampus','siswas'));
+}
+
+    public function show($id)
+    {
+        $pengampu = Pengampu::with(['mapel','nilais.siswa'])
+            ->where('id',$id)
+            ->where('user_id',auth()->id())
+            ->firstOrFail();
+
+        $siswaSudahDinilai = $pengampu->nilais->pluck('user_id');
+
+        $siswas = User::where('role','siswa')
+            ->whereNotIn('id',$siswaSudahDinilai)
+            ->get();
+
+        return view('guru.nilai', compact(
+            'pengampu','siswas'
+        ));
+    }
+
+    public function store(Request $r)
+    {
+        Nilai::create($r->all());
+        return back()->with('success','Nilai ditambahkan');
+    }
+
+    public function update(Request $r, $id)
+    {
+        Nilai::findOrFail($id)->update([
+            'nilai'=>$r->nilai
+        ]);
+        return back();
+    }
+
+    public function delete($id)
+    {
+        Nilai::findOrFail($id)->delete();
+        return back();
+    }
+}
+6.routing di role guru
+tambah:
+use App\Http\Controllers\GuruNilaiController;
+
+Route::get('/guru', [GuruNilaiController::class,'index']);
+    Route::get('/guru/pengampu/{id}', [GuruNilaiController::class,'show']);
+    Route::post('/guru/nilai', [GuruNilaiController::class,'store']);
+    Route::post('/guru/nilai/{id}', [GuruNilaiController::class,'update']);
+    Route::get('/guru/nilai/delete/{id}', [GuruNilaiController::class,'delete']);
+7. resources/views/guru/dashboard.blade.php
+isi:
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            Dashboard Guru
+        </h2>
+    </x-slot>
+
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+
+            @foreach($pengampus as $p)
+            <div class="bg-white p-6 rounded shadow mb-8">
+
+                {{-- JUDUL MAPEL --}}
+                <h3 class="text-lg font-bold mb-4">
+                    Mapel: {{ $p->mapel->nama }}
+                </h3>
+
+                {{-- FORM INPUT NILAI --}}
+                <div class="mb-6">
+                    <h4 class="font-semibold mb-2">Input Nilai Siswa</h4>
+
+                    <form method="POST" action="/guru/nilai" class="flex gap-2">
+                        @csrf
+
+                        <input type="hidden" name="pengampu_id" value="{{ $p->id }}">
+
+                        <select name="user_id" class="border px-2 py-1" required>
+                            <option value="">-- Pilih Siswa --</option>
+
+                            @php
+                                $sudahDinilai = $p->nilais->pluck('user_id');
+                            @endphp
+
+                            @foreach($siswas as $s)
+                                @if(!$sudahDinilai->contains($s->id))
+                                    <option value="{{ $s->id }}">{{ $s->name }}</option>
+                                @endif
+                            @endforeach
+                        </select>
+
+                        <input
+                            type="number"
+                            name="nilai"
+                            placeholder="Nilai"
+                            class="border px-2 py-1"
+                            required
+                        >
+
+                        <button class="bg-blue-600 text-white px-4 py-1 rounded">
+                            Simpan
+                        </button>
+                    </form>
+                </div>
+
+                {{-- DAFTAR NILAI --}}
+                <div>
+                    <h4 class="font-semibold mb-2">Daftar Nilai</h4>
+
+                    <table class="w-full border">
+                        <thead>
+                            <tr class="bg-gray-100">
+                                <th class="border px-2 py-1">Nama Siswa</th>
+                                <th class="border px-2 py-1">Nilai</th>
+                                <th class="border px-2 py-1">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($p->nilais as $n)
+                            <tr>
+                                <form method="POST" action="/guru/nilai/{{ $n->id }}">
+                                    @csrf
+                                    <td class="border px-2 py-1">
+                                        {{ $n->siswa->name }}
+                                    </td>
+                                    <td class="border px-2 py-1">
+                                        <input
+                                            name="nilai"
+                                            value="{{ $n->nilai }}"
+                                            class="border px-1 w-full"
+                                        >
+                                    </td>
+                                    <td class="border px-2 py-1">
+                                        <button class="bg-green-500 px-2 py-1 rounded text-black">
+                                            Update
+                                        </button>
+
+                                        <a href="/guru/nilai/delete/{{ $n->id }}"
+                                           onclick="return confirm('Hapus nilai?')"
+                                           class="bg-red-500 px-2 py-1 rounded text-black">
+                                            Hapus
+                                        </a>
+                                    </td>
+                                </form>
+                            </tr>
+                            @endforeach
+
+                            @if($p->nilais->count() == 0)
+                            <tr>
+                                <td colspan="3" class="text-center py-2 text-gray-500">
+                                    Belum ada nilai
+                                </td>
+                            </tr>
+                            @endif
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+            @endforeach
+
+            @if($pengampus->count() == 0)
+                <div class="text-center text-gray-500">
+                    Anda belum memiliki mapel yang diampu
+                </div>
+            @endif
+
+        </div>
+    </div>
+</x-app-layout>
+
+DASHBOARD Siswa
+1. php artisan make:controller SiswaController
+isi:
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\Nilai;
+
+class SiswaController extends Controller
+{
+    public function index()
+    {
+        $nilais = Nilai::with(['pengampu.mapel','pengampu.guru'])
+            ->where('user_id', auth()->id())
+            ->get();
+
+        return view('siswa.dashboard', compact('nilais'));
+    }
+}
+2. BUAT VIEW SISWA
+resources/views/siswa/dashboard.blade.php
+isi:
+<x-app-layout>
+    <x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            Dashboard Siswa
+        </h2>
+    </x-slot>
+
+    <div class="py-6">
+        <div class="max-w-5xl mx-auto">
+
+            <div class="bg-white p-6 rounded shadow">
+
+                <h3 class="text-lg font-bold mb-4">
+                    Nilai Saya
+                </h3>
+
+                <table class="w-full border">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-2 py-1">Mapel</th>
+                            <th class="border px-2 py-1">Guru</th>
+                            <th class="border px-2 py-1">Nilai</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        @foreach($nilais as $n)
+                        <tr>
+                            <td class="border px-2 py-1">
+                                {{ $n->pengampu->mapel->nama }}
+                            </td>
+                            <td class="border px-2 py-1">
+                                {{ $n->pengampu->guru->name }}
+                            </td>
+                            <td class="border px-2 py-1">
+                                {{ $n->nilai }}
+                            </td>
+                        </tr>
+                        @endforeach
+
+                        @if($nilais->count() == 0)
+                        <tr>
+                            <td colspan="3" class="text-center text-gray-500 py-2">
+                                Belum ada nilai
+                            </td>
+                        </tr>
+                        @endif
+
+                    </tbody>
+                </table>
+
+            </div>
+
+        </div>
+    </div>
+</x-app-layout>
